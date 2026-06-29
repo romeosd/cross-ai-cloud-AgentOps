@@ -1,0 +1,291 @@
+# ============================================================
+# Cross-Cloud AgentOps — watsonx Orchestrate Control Plane
+# Author: Ramy Amer
+# ============================================================
+# watsonx Orchestrate is the single control plane governing all
+# agents across AWS Bedrock, Azure Semantic Kernel, and Vertex AI.
+# This file wires all endpoints and agent registrations.
+
+# ------------------------------------------------------------
+# watsonx Orchestrate
+# ------------------------------------------------------------
+orchestrate:
+  api_url:            "${ORCHESTRATE_API_URL}"          # https://api.us-south.watsonx.ai/v1
+  instance_id:        "${ORCHESTRATE_INSTANCE_ID}"
+  api_key:            "${ORCHESTRATE_API_KEY}"
+  environment:        "${ORCHESTRATE_ENVIRONMENT:-production}"
+
+  # Agent governance policies
+  governance:
+    human_in_loop_threshold:  0.70      # Confidence below this → escalate to human
+    max_agent_hops:           10         # Max sequential agent calls per workflow
+    timeout_seconds:          300        # Per-workflow timeout
+    audit_all_invocations:    true
+    pii_detection_enabled:    true
+
+  # Routing strategy
+  routing:
+    strategy:         "cost_optimised"   # cost_optimised | latency_optimised | capability_first
+    fallback_cloud:   "aws"
+    cost_weight:      0.4
+    latency_weight:   0.3
+    capability_weight: 0.3
+
+# ------------------------------------------------------------
+# Cloud Execution Planes
+# ------------------------------------------------------------
+clouds:
+  aws:
+    region:           "ap-southeast-2"
+    bedrock_agent_id: "${AWS_BEDROCK_AGENT_ID}"
+    bedrock_alias:    "${AWS_BEDROCK_AGENT_ALIAS_ID}"
+    cost_per_1k_tokens: 0.003
+
+  azure:
+    subscription_id:  "${AZURE_SUBSCRIPTION_ID}"
+    openai_endpoint:  "${AZURE_OPENAI_ENDPOINT}"
+    openai_api_key:   "${AZURE_OPENAI_API_KEY}"
+    openai_api_version: "2024-10-21"
+    gpt4o_deployment: "gpt-4o"
+    cost_per_1k_tokens: 0.0025
+
+  gcp:
+    project_id:       "${GCP_PROJECT_ID}"
+    location:         "australia-southeast1"
+    gemini_model:     "gemini-2.0-flash-001"
+    cost_per_1k_tokens: 0.000075
+
+# ------------------------------------------------------------
+# Industry Agent Registrations
+# ------------------------------------------------------------
+# Each entry registers a LangGraph agent as a skill in Orchestrate.
+# cloud: which execution plane runs this agent
+# graph_module: Python module path containing the LangGraph graph
+# trigger_intent: natural language patterns that trigger this skill
+
+agent_registry:
+
+  # ── Financial Services ────────────────────────────────────
+  - id: "fs_loan_origination"
+    name: "Loan Origination Pipeline"
+    industry: "financial_services"
+    description: "End-to-end loan assessment — credit retrieval (AWS), policy check (Azure), decision letter (GCP)"
+    clouds: ["aws", "azure", "gcp"]
+    orchestration: "sequential"
+    graph_module: "src.industries.financial_services.loan_origination"
+    trigger_intent: ["assess loan", "loan application", "credit assessment", "home loan"]
+    sla_seconds: 120
+    requires_human_approval: true
+    compliance_tags: ["APRA", "NCCP", "AML"]
+
+  - id: "fs_aml_detection"
+    name: "AML Transaction Monitoring"
+    industry: "financial_services"
+    description: "Real-time AML detection with LangGraph state machine — flag, enrich, escalate"
+    clouds: ["aws"]
+    orchestration: "stateful_graph"
+    graph_module: "src.industries.financial_services.aml_detection"
+    trigger_intent: ["suspicious transaction", "AML alert", "transaction monitoring"]
+    sla_seconds: 30
+    requires_human_approval: true
+    compliance_tags: ["AUSTRAC", "AML/CTF", "APRA_CPS234"]
+
+  - id: "fs_regulatory_reporting"
+    name: "APRA Regulatory Reporting"
+    industry: "financial_services"
+    description: "Multi-agent APRA/ASIC report generation with data reconciliation and audit trail"
+    clouds: ["aws", "azure", "gcp"]
+    orchestration: "parallel_then_merge"
+    graph_module: "src.industries.financial_services.regulatory_reporting"
+    trigger_intent: ["generate APRA report", "regulatory submission", "ASIC filing"]
+    sla_seconds: 600
+    requires_human_approval: true
+    compliance_tags: ["APRA", "ASIC", "CPS220", "CPS230"]
+
+  - id: "fs_wealth_advisory"
+    name: "Wealth Advisory Agent"
+    industry: "financial_services"
+    description: "Portfolio analysis → risk profiling → personalised advice generation"
+    clouds: ["gcp", "azure"]
+    orchestration: "sequential"
+    graph_module: "src.industries.financial_services.wealth_advisory"
+    trigger_intent: ["portfolio review", "investment advice", "wealth planning"]
+    sla_seconds: 60
+    requires_human_approval: false
+    compliance_tags: ["FASEA", "RG175"]
+
+  # ── Retail ────────────────────────────────────────────────
+  - id: "retail_demand_forecasting"
+    name: "Demand Forecasting & Replenishment"
+    industry: "retail"
+    description: "Sales data ingestion (AWS) → ML forecast (GCP) → replenishment order (Azure)"
+    clouds: ["aws", "gcp", "azure"]
+    orchestration: "sequential"
+    graph_module: "src.industries.retail.demand_forecasting"
+    trigger_intent: ["forecast demand", "replenish stock", "inventory planning"]
+    sla_seconds: 180
+
+  - id: "retail_personalisation"
+    name: "Customer Personalisation Engine"
+    industry: "retail"
+    description: "Omnichannel next-best-action agent with real-time preference learning"
+    clouds: ["gcp", "aws"]
+    orchestration: "stateful_graph"
+    graph_module: "src.industries.retail.customer_personalisation"
+    trigger_intent: ["personalise offer", "recommend products", "next best action"]
+    sla_seconds: 5
+
+  - id: "retail_returns_fraud"
+    name: "Returns Fraud Detection"
+    industry: "retail"
+    description: "Anomaly detection (AWS) → policy check (Azure) → disposition decision"
+    clouds: ["aws", "azure"]
+    orchestration: "sequential"
+    graph_module: "src.industries.retail.returns_fraud"
+    trigger_intent: ["returns fraud", "suspicious return", "return anomaly"]
+    sla_seconds: 10
+    requires_human_approval: true
+
+  - id: "retail_supplier_negotiation"
+    name: "Autonomous Supplier Negotiation"
+    industry: "retail"
+    description: "Market analysis → negotiation strategy → counter-offer generation agent"
+    clouds: ["gcp", "azure"]
+    orchestration: "stateful_graph"
+    graph_module: "src.industries.retail.supplier_negotiation"
+    trigger_intent: ["negotiate supplier", "procurement agent", "vendor negotiation"]
+    sla_seconds: 300
+
+  # ── Telco ─────────────────────────────────────────────────
+  - id: "telco_network_fault"
+    name: "Network Fault Remediation"
+    industry: "telco"
+    description: "Fault detection → root cause analysis → automated remediation agent chain"
+    clouds: ["aws", "gcp"]
+    orchestration: "stateful_graph"
+    graph_module: "src.industries.telco.network_fault_remediation"
+    trigger_intent: ["network fault", "outage remediation", "service degradation"]
+    sla_seconds: 60
+
+  - id: "telco_churn_intervention"
+    name: "Churn Intervention Agent"
+    industry: "telco"
+    description: "Churn prediction (GCP) → personalisation (Azure) → retention offer (AWS)"
+    clouds: ["gcp", "azure", "aws"]
+    orchestration: "sequential"
+    graph_module: "src.industries.telco.churn_intervention"
+    trigger_intent: ["churn risk", "retention offer", "at-risk customer"]
+    sla_seconds: 15
+
+  - id: "telco_fraud_detection"
+    name: "Telco Fraud Detection"
+    industry: "telco"
+    description: "SIM swap, subscription fraud, and toll fraud detection with real-time blocking"
+    clouds: ["aws", "azure"]
+    orchestration: "parallel"
+    graph_module: "src.industries.telco.fraud_detection"
+    trigger_intent: ["SIM swap", "subscription fraud", "toll fraud"]
+    sla_seconds: 5
+    requires_human_approval: true
+
+  # ── Mining ────────────────────────────────────────────────
+  - id: "mining_predictive_maintenance"
+    name: "Predictive Maintenance Agent"
+    industry: "mining"
+    description: "Sensor ingestion → anomaly detection → failure prediction → work order creation"
+    clouds: ["aws", "gcp"]
+    orchestration: "stateful_graph"
+    graph_module: "src.industries.mining.predictive_maintenance"
+    trigger_intent: ["equipment fault", "predictive maintenance", "asset failure"]
+    sla_seconds: 30
+
+  - id: "mining_safety_compliance"
+    name: "Site Safety Monitoring"
+    industry: "mining"
+    description: "Vision-based hazard detection (GCP) → risk assessment (AWS) → safety alert"
+    clouds: ["gcp", "aws"]
+    orchestration: "sequential"
+    graph_module: "src.industries.mining.safety_compliance"
+    trigger_intent: ["safety alert", "hazard detection", "site compliance"]
+    sla_seconds: 10
+    requires_human_approval: true
+    compliance_tags: ["WHS", "ISO45001"]
+
+  - id: "mining_ore_optimisation"
+    name: "Ore Grade Optimisation"
+    industry: "mining"
+    description: "Image analysis (GCP Vision) → grade prediction (AWS SageMaker) → blending schedule"
+    clouds: ["gcp", "aws"]
+    orchestration: "sequential"
+    graph_module: "src.industries.mining.ore_grade_optimisation"
+    trigger_intent: ["ore grade", "blending optimisation", "grade prediction"]
+    sla_seconds: 120
+
+  - id: "mining_supply_chain"
+    name: "Supply Chain Disruption Response"
+    industry: "mining"
+    description: "Supplier risk monitoring → disruption prediction → logistics rerouting agent"
+    clouds: ["azure", "gcp"]
+    orchestration: "stateful_graph"
+    graph_module: "src.industries.mining.supply_chain_disruption"
+    trigger_intent: ["supply disruption", "supplier risk", "logistics rerouting"]
+    sla_seconds: 180
+
+  # ── Government ────────────────────────────────────────────
+  - id: "gov_citizen_services"
+    name: "Citizen Services Triage"
+    industry: "government"
+    description: "Intent classification → eligibility check → service routing → case creation"
+    clouds: ["azure", "aws"]
+    orchestration: "sequential"
+    graph_module: "src.industries.government.citizen_services"
+    trigger_intent: ["citizen enquiry", "service request", "government assistance"]
+    sla_seconds: 10
+
+  - id: "gov_grant_assessment"
+    name: "Grant Assessment Pipeline"
+    industry: "government"
+    description: "Eligibility → document verification → risk scoring → approval recommendation"
+    clouds: ["aws", "azure", "gcp"]
+    orchestration: "sequential"
+    graph_module: "src.industries.government.grant_assessment"
+    trigger_intent: ["grant application", "funding assessment", "grant eligibility"]
+    sla_seconds: 300
+    requires_human_approval: true
+    compliance_tags: ["PGPA", "Commonwealth_Grants_Policy"]
+
+  - id: "gov_procurement_compliance"
+    name: "Procurement Compliance Agent"
+    industry: "government"
+    description: "Policy check → vendor verification → contract risk analysis → approval"
+    clouds: ["azure", "gcp"]
+    orchestration: "sequential"
+    graph_module: "src.industries.government.procurement_compliance"
+    trigger_intent: ["procurement", "vendor assessment", "contract compliance"]
+    sla_seconds: 240
+    requires_human_approval: true
+    compliance_tags: ["CPRs", "APS_Values"]
+
+  - id: "gov_benefits_fraud"
+    name: "Benefits Fraud Detection"
+    industry: "government"
+    description: "Cross-agency data fusion → anomaly detection → investigation case creation"
+    clouds: ["aws", "azure"]
+    orchestration: "parallel_then_merge"
+    graph_module: "src.industries.government.fraud_benefits"
+    trigger_intent: ["benefits fraud", "welfare fraud", "eligibility anomaly"]
+    sla_seconds: 60
+    requires_human_approval: true
+    compliance_tags: ["Privacy_Act", "CDPP"]
+
+# ------------------------------------------------------------
+# AgentOps Observability
+# ------------------------------------------------------------
+agentops:
+  metrics_backend:      "prometheus"         # prometheus | cloudwatch | stackdriver
+  dashboard_port:       8080
+  cost_alert_threshold_usd: 100.0            # Alert when daily spend exceeds this
+  health_check_interval_seconds: 60
+  audit_log_destination: "s3"               # s3 | azure_blob | gcs | local
+  audit_log_bucket:     "${AUDIT_LOG_BUCKET}"
+  retention_days:       2555                 # 7 years for APRA compliance
