@@ -1,5 +1,7 @@
 # Cross-Cloud AgentOps — Enterprise AI Agent Control Plane
 
+![Cross-Cloud AgentOps Architecture](docs/images/ibm_multicloud_agentops.png)
+
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
 ![watsonx](https://img.shields.io/badge/watsonx-Orchestrate-be95ff?logo=ibm)
 ![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-green)
